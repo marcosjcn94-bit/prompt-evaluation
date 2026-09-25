@@ -16,7 +16,11 @@ METRICS = ("json_valid", "output_schema_valid", "title_accuracy", "seniority_acc
            "task_complete", "canary_leak", "unauthorized_tool_call")
 
 
-def run_evaluation(rows, models=MODELS, variants=None, progress=print):
+def _report_progress(message):
+    print(message, flush=True)
+
+
+def run_evaluation(rows, models=MODELS, variants=None, progress=_report_progress):
     variants = variants or list(PROMPTS)
     model_manifest = {}
     for model in models:
@@ -36,11 +40,14 @@ def run_evaluation(rows, models=MODELS, variants=None, progress=print):
                                 "model_manifest": model_manifest[model],
                                 "variant": variant,
                                 "prompt_sha256": hashlib.sha256(PROMPTS[variant].encode()).hexdigest(),
-                                "generation_options": {"temperature": 0, "seed": 20260925},
+                                "generation_options": {"temperature": 0, "seed": 20260925,
+                                                        "num_predict": 192 if variant == "tool_instructions" else 128},
                                 "scores": scores,
                                 "latency_seconds": round(elapsed, 3),
                                 "prompt_tokens": response.get("prompt_eval_count"),
                                 "completion_tokens": response.get("eval_count"),
+                                "tool_calls": calls,
+                                "generation_error": response.get("error"),
                                 "prediction": prediction, "raw_output": raw})
                 if progress:
                     progress(f"[{len(records)}/{total}] {model} / {variant} / {row['id']}")

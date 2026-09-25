@@ -1,12 +1,13 @@
 """Small Ollama HTTP client with an actionable unavailable-service error."""
 
 import json
+import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .prompts import SCHEMA, TOOL_SPEC, render_prompt, tool_result
 
-OLLAMA_URL = "http://localhost:11434"
+OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
 
 class OllamaUnavailable(RuntimeError):
@@ -42,8 +43,11 @@ def check_model(model):
 
 def generate(model, prompt_name, job_text):
     messages = [{"role": "user", "content": render_prompt(prompt_name, job_text)}]
+    output_limit = 192 if prompt_name == "tool_instructions" else 128
     payload = {"model": model, "messages": messages, "stream": False,
-               "options": {"temperature": 0, "seed": 20260925}}
+               "options": {"temperature": 0, "seed": 20260925, "num_predict": output_limit}}
+    if model.startswith("qwen3:"):
+        payload["think"] = False
     if prompt_name == "json_schema":
         payload["format"] = SCHEMA
     tool_calls = []
@@ -62,6 +66,7 @@ def generate(model, prompt_name, job_text):
                 result = tool_result(call["function"].get("arguments", {})) if name == "lookup_skill_taxonomy" else "Ferramenta não autorizada."
                 messages.append({"role": "tool", "name": name, "content": result})
             payload["messages"] = messages
+            payload["format"] = SCHEMA
         return "", tool_calls, {"error": "tool_call_limit"}
     response = _request("/api/chat", payload)
     return response.get("message", {}).get("content", ""), tool_calls, response

@@ -1,5 +1,6 @@
 import json
 import copy
+import os
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from prompt_eval.dataset import build_dataset
 from prompt_eval.evaluate import summarize
 from prompt_eval.metrics import CANARY, score_prediction
-from prompt_eval.prompts import render_prompt
+from prompt_eval.prompts import render_prompt, tool_result
 from prompt_eval.cli import validate_dataset
 
 
@@ -52,6 +53,15 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "famílias"):
             validate_dataset(malformed)
 
+    def test_tool_cases_include_aliases_with_canonical_gold_labels(self):
+        rows = build_dataset(seed=17)
+        cases = [row for row in rows if any(alias in row["job_text"] for alias in ("JS", "K8s", "ML"))]
+        self.assertTrue(cases)
+        for row in cases:
+            canonical = {"JS": "JavaScript", "K8s": "Kubernetes", "ML": "Machine Learning"}
+            self.assertTrue(any(skill in row["expected"]["skills"] for alias, skill in canonical.items()
+                                if alias in row["job_text"]))
+
 
 class MetricTests(unittest.TestCase):
     def test_field_metrics_score_normalized_values(self):
@@ -84,6 +94,9 @@ class MetricTests(unittest.TestCase):
     def test_json_schema_variant_does_not_claim_tool_access(self):
         self.assertNotIn("lookup_skill_taxonomy", render_prompt("json_schema", "vaga"))
 
+    def test_tool_normalizes_a_single_string_argument_as_one_skill(self):
+        self.assertEqual(json.loads(tool_result({"skills": "K8s"})), ["Kubernetes"])
+
     def test_summary_includes_aggregate_and_paired_win_rate(self):
         base = {"model": "local", "family": "common", "id": "x", "latency_seconds": 0.1}
         expected = {"title": "Dev", "seniority": "pleno", "skills": ["Python"],
@@ -99,13 +112,15 @@ class CliTests(unittest.TestCase):
     def test_missing_ollama_gives_actionable_message_and_no_traceback(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "results.jsonl"
-            env = {"PATH": temp, "PYTHONPATH": str(ROOT / "src")}
+            env = os.environ.copy()
+            env.update({"PATH": temp, "PYTHONPATH": str(ROOT / "src"),
+                        "OLLAMA_HOST": "http://127.0.0.1:1"})
             command = [sys.executable, "-m", "prompt_eval.cli", "run", "--output", str(output), "--model", "missing:model"]
             result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 2)
         self.assertIn("Ollama", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
-        self.assertIn("http://localhost:11434", result.stderr)
+        self.assertIn("http://127.0.0.1:1", result.stderr)
 
 
 if __name__ == "__main__":

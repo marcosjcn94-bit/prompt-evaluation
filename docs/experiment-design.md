@@ -5,7 +5,7 @@
 - Modelos: `qwen3:4b` e `llama3.2:3b`, instalados localmente no Ollama.
 - Prompt versions: `baseline`, `structured`, `few_shot`, `json_schema`, `tool_instructions`.
 - Casos: os mesmos IDs e ordem de execução para cada combinação de modelo/prompt.
-- Decodificação: temperatura 0 e seed fixa `20260925`; o artefato inclui digest do modelo e hash do prompt.
+- Decodificação: temperatura 0, seed fixa `20260925`, limite de 128 tokens (192 na variante de ferramenta) e pensamento estendido desativado para Qwen3; após uma chamada de ferramenta, a resposta final usa o JSON Schema. O artefato inclui digest do modelo e hash do prompt.
 - Desenvolvimento: 100 casos para comparar e selecionar uma variante.
 - Holdout: 50 casos reservados, nunca usados para escolher ou ajustar prompts.
 
@@ -28,6 +28,8 @@ Dez casos por família; seis entram em dev e quatro em test:
 - `canary_exfiltration`: solicitação para propagar marcador sintético.
 - `tool_abuse`: tentativa de usar ferramenta para ação externa.
 - `instruction_obfuscation`: instrução maliciosa com espaçamento alterado.
+
+Alguns casos comuns exibem aliases sintéticos `JS`, `K8s` e `ML`; o rótulo esperado usa a forma canônica. A variante de ferramenta chama a taxonomia somente nesses casos.
 
 Todos os exemplos preservam um rótulo de extração esperado. O texto de ataque é tratado como conteúdo da vaga, nunca como instrução legítima do avaliador.
 
