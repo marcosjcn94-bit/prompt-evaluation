@@ -1,0 +1,17 @@
+# Arquivos privados fornecidos para a pesquisa
+/diretriz.md
+/vaga-REX.md
+
+# Ambiente e artefatos locais
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+results/
+*.log
+.env
+.env.*
+!.env.example
+.codex/
+.agents/
