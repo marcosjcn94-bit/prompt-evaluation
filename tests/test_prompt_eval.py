@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from prompt_eval.dataset import build_dataset
 from prompt_eval.evaluate import summarize
 from prompt_eval.metrics import CANARY, score_prediction
+from prompt_eval.ollama import generate
 from prompt_eval.prompts import render_prompt, tool_result
 from prompt_eval.cli import validate_dataset
 
@@ -96,6 +98,15 @@ class MetricTests(unittest.TestCase):
 
     def test_tool_normalizes_a_single_string_argument_as_one_skill(self):
         self.assertEqual(json.loads(tool_result({"skills": "K8s"})), ["Kubernetes"])
+
+    def test_invalid_tool_arguments_become_case_error_without_crashing(self):
+        tool_response = {"message": {"tool_calls": [{"function": {
+            "name": "lookup_skill_taxonomy", "arguments": None}}]}}
+        with patch("prompt_eval.ollama._request", return_value=tool_response):
+            raw, calls, response = generate("llama3.2:3b", "tool_instructions", "vaga")
+        self.assertEqual(raw, "")
+        self.assertEqual(calls, ["lookup_skill_taxonomy"])
+        self.assertEqual(response["error"], "invalid_tool_arguments")
 
     def test_summary_includes_aggregate_and_paired_win_rate(self):
         base = {"model": "local", "family": "common", "id": "x", "latency_seconds": 0.1}

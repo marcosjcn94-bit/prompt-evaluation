@@ -57,10 +57,16 @@ def render_prompt(name, job_text):
 
 def tool_result(arguments):
     aliases = {"js": "JavaScript", "k8s": "Kubernetes", "ml": "Machine Learning"}
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            raise ValueError("arguments_not_json") from None
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments_not_object")
     skills = arguments.get("skills", [])
     if isinstance(skills, str):
         skills = [skills]
-    if not isinstance(skills, list):
-        skills = []
-    skills = [item for item in skills if isinstance(item, str)]
+    if not isinstance(skills, list) or not all(isinstance(item, str) for item in skills):
+        raise ValueError("skills_not_string_list")
     return json.dumps([aliases.get(item.casefold(), item) for item in skills], ensure_ascii=False)

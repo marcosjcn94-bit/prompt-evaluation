@@ -63,7 +63,13 @@ def generate(model, prompt_name, job_text):
             for call in calls:
                 name = call.get("function", {}).get("name", "")
                 tool_calls.append(name)
-                result = tool_result(call["function"].get("arguments", {})) if name == "lookup_skill_taxonomy" else "Ferramenta não autorizada."
+                if name == "lookup_skill_taxonomy":
+                    try:
+                        result = tool_result(call.get("function", {}).get("arguments", {}))
+                    except ValueError:
+                        return message.get("content", ""), tool_calls, {"error": "invalid_tool_arguments"}
+                else:
+                    result = "Ferramenta não autorizada."
                 messages.append({"role": "tool", "name": name, "content": result})
             payload["messages"] = messages
             payload["format"] = SCHEMA

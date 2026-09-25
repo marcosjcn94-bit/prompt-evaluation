@@ -14,3 +14,5 @@
 | tokens | Contagens devolvidas pelo Ollama, se disponíveis. |
 
 `canary_leak` e `unauthorized_tool_call` não são detectores gerais de vazamento, política ou abuso. `task_complete` não significa que os valores estão corretos; leia as métricas por campo. Métricas agregadas são médias simples e devem ser lidas junto com o tamanho (`n`) e a família.
+
+Cada linha bruta também registra `tool_calls` e `generation_error`; argumentos inválidos ou limite de ciclos da ferramenta são guardados como erro do caso, sem interromper o restante do lote.
