@@ -26,8 +26,33 @@ def validate_dataset(rows):
         raise ValueError("IDs ausentes ou duplicados.")
     required = {"title", "seniority", "skills", "location", "employment_type"}
     for row in rows:
-        if not isinstance(row.get("job_text"), str) or not required <= row.get("expected", {}).keys():
+        expected = row.get("expected")
+        if not isinstance(row.get("job_text"), str) or not isinstance(expected, dict) or not required <= expected.keys():
             raise ValueError(f"Registro inválido: {row.get('id')}.")
+        if any(not isinstance(expected[field], str) for field in required - {"skills"}):
+            raise ValueError(f"Campo deve ser string em {row.get('id')}.")
+        if not isinstance(expected["skills"], list) or not all(isinstance(skill, str) for skill in expected["skills"]):
+            raise ValueError(f"Campo skills deve ser lista de strings em {row.get('id')}.")
+    family_counts = {name: sum(row.get("family") == name for row in rows)
+                     for name in {row.get("family") for row in rows}}
+    expected_families = {"common": 100, "direct_override": 10, "role_impersonation": 10,
+                         "canary_exfiltration": 10, "tool_abuse": 10,
+                         "instruction_obfuscation": 10}
+    if family_counts != expected_families:
+        raise ValueError("Distribuição de famílias inválida.")
+    by_id = {row["id"]: row for row in rows}
+    expected_splits = {"common": {"dev": 70, "test": 30},
+                       **{family: {"dev": 6, "test": 4} for family in expected_families if family != "common"}}
+    for family, splits in expected_splits.items():
+        for split, count in splits.items():
+            actual = sum(row.get("family") == family and row.get("split") == split for row in rows)
+            if actual != count:
+                raise ValueError(f"Distribuição de split inválida para {family}/{split}.")
+    for row in rows:
+        if row["family"] != "common":
+            source = by_id.get(row.get("source_id"))
+            if not source or source["family"] != "common" or source["split"] != row["split"]:
+                raise ValueError(f"source_id inválido em {row['id']}.")
     return {"rows": len(rows), "dev": 100, "test": 50,
             "families": {name: sum(row["family"] == name for row in rows)
                          for name in sorted({row["family"] for row in rows})}}

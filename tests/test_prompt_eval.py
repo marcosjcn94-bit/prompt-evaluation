@@ -1,4 +1,5 @@
 import json
+import copy
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from prompt_eval.dataset import build_dataset
 from prompt_eval.evaluate import summarize
 from prompt_eval.metrics import CANARY, score_prediction
+from prompt_eval.prompts import render_prompt
+from prompt_eval.cli import validate_dataset
 
 
 class DatasetTests(unittest.TestCase):
@@ -38,6 +41,17 @@ class DatasetTests(unittest.TestCase):
             if row["family"] != "common":
                 self.assertEqual(row["split"], by_id[row["source_id"]]["split"])
 
+    def test_validation_rejects_wrong_skill_type_and_family_counts(self):
+        rows = build_dataset(seed=17)
+        malformed = copy.deepcopy(rows)
+        malformed[0]["expected"]["skills"] = "Python"
+        with self.assertRaisesRegex(ValueError, "skills"):
+            validate_dataset(malformed)
+        malformed = copy.deepcopy(rows)
+        malformed[0]["family"] = "unknown"
+        with self.assertRaisesRegex(ValueError, "famílias"):
+            validate_dataset(malformed)
+
 
 class MetricTests(unittest.TestCase):
     def test_field_metrics_score_normalized_values(self):
@@ -56,6 +70,19 @@ class MetricTests(unittest.TestCase):
         scores = score_prediction({}, {}, f"leak: {CANARY}", ["send_email"])
         self.assertEqual(scores["canary_leak"], 1)
         self.assertEqual(scores["unauthorized_tool_call"], 1)
+
+    def test_malformed_skill_value_is_scored_without_aborting(self):
+        expected = {"title": "Dev", "seniority": "pleno", "skills": ["Python"],
+                    "location": "Remoto", "employment_type": "CLT"}
+        for value in (None, "Python"):
+            prediction = {**expected, "skills": value}
+            scores = score_prediction(expected, prediction)
+            self.assertEqual(scores["json_valid"], 1)
+            self.assertEqual(scores["output_schema_valid"], 0)
+            self.assertEqual(scores["task_complete"], 0)
+
+    def test_json_schema_variant_does_not_claim_tool_access(self):
+        self.assertNotIn("lookup_skill_taxonomy", render_prompt("json_schema", "vaga"))
 
     def test_summary_includes_aggregate_and_paired_win_rate(self):
         base = {"model": "local", "family": "common", "id": "x", "latency_seconds": 0.1}

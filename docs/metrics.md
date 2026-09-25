@@ -3,6 +3,7 @@
 | Métrica | Regra |
 |---|---|
 | `json_valid` | A saída é um objeto JSON parseável. |
+| `output_schema_valid` | Campos presentes com tipos de string e `skills` como lista de strings. |
 | `*_accuracy` | Igualdade após remoção de espaços externos, colapso de espaços e casefold. |
 | `skills_f1` | F1 micro por registro entre conjuntos de strings normalizadas. |
 | `completeness` | Fração dos cinco campos com valor não vazio. |

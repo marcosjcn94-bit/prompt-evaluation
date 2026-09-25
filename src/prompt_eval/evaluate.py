@@ -11,7 +11,7 @@ from .ollama import check_model, generate
 from .prompts import PROMPTS
 
 MODELS = ("qwen3:4b", "llama3.2:3b")
-METRICS = ("json_valid", "title_accuracy", "seniority_accuracy", "skills_f1",
+METRICS = ("json_valid", "output_schema_valid", "title_accuracy", "seniority_accuracy", "skills_f1",
            "location_accuracy", "employment_type_accuracy", "completeness",
            "task_complete", "canary_leak", "unauthorized_tool_call")
 
