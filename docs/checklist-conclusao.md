@@ -36,9 +36,9 @@ Atualizado em 2026-09-26. Marque como concluído apenas o que tiver evidência r
 - [x] Revalidar o dataset: 150 registros, 100 dev e 50 test.
 - [x] Executar smoke run local focalizado: uma inferência em `qwen3:4b/json_schema`, saída gravada em `results/` (ignorado pelo Git).
 - [x] Validar o HTML integrado em quatro tamanhos de viewport, sem overflow, e revisar uma captura.
-- [ ] Revisar `git status`, arquivos ignorados e conteúdo staged para evitar publicação de arquivos privados ou resultados brutos.
-- [ ] Criar commit com as mudanças aprovadas.
-- [ ] Enviar o commit a `origin/main`; depende de autenticação GitHub válida no ambiente.
+- [x] Revisar `git status`, arquivos ignorados e conteúdo staged; nenhum arquivo privado ou resultado bruto foi publicado.
+- [x] Criar commit com as mudanças aprovadas.
+- [x] Enviar o commit a `origin/main`; o push foi concluído usando a autenticação Git disponível no Git, apesar do token inválido reportado pelo `gh auth status`.
 
 ## Critério de encerramento desta entrega
 
