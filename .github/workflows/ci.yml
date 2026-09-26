@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Unit and replay regression tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Dataset validation
+        run: python scripts/prompt_eval.py validate
+      - name: Syntax and import checks
+        run: |
+          python -m compileall -q src scripts tests
+          python -c "import sys; sys.path.insert(0, 'src'); import prompt_eval.cli, prompt_eval.comparison, prompt_eval.registry"

@@ -5,13 +5,10 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .errors import OllamaUnavailable, RetryableOllamaError
 from .prompts import SCHEMA, TOOL_SPEC, render_prompt, tool_result
 
 OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-
-
-class OllamaUnavailable(RuntimeError):
-    pass
 
 
 def _request(path, payload=None, timeout=180):
@@ -21,9 +18,17 @@ def _request(path, payload=None, timeout=180):
     try:
         with urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode())
-    except (URLError, TimeoutError, HTTPError, json.JSONDecodeError) as error:
+    except HTTPError as error:
+        error_type = RetryableOllamaError if error.code >= 500 else OllamaUnavailable
         detail = getattr(error, "reason", error)
-        raise OllamaUnavailable(
+        raise error_type(
+            f"Não foi possível acessar o Ollama em {OLLAMA_URL} ({detail}). "
+            "Instale/inicie o Ollama e baixe o modelo com `ollama pull qwen3:4b`; "
+            "para validar o dataset sem modelo, use `py -3.13 scripts/prompt_eval.py validate`."
+        ) from None
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        detail = getattr(error, "reason", error)
+        raise RetryableOllamaError(
             f"Não foi possível acessar o Ollama em {OLLAMA_URL} ({detail}). "
             "Instale/inicie o Ollama e baixe o modelo com `ollama pull qwen3:4b`; "
             "para validar o dataset sem modelo, use `py -3.13 scripts/prompt_eval.py validate`."

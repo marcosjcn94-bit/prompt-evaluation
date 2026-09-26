@@ -8,7 +8,9 @@
     "views": [
       { "id": "evaluation", "label": "Evaluation path", "focus": ["operator", "cli", "runner", "ollama", "metrics", "results"], "note": "Run paired prompt experiments against local Ollama models." },
       { "id": "synthetic-data", "label": "Synthetic data", "focus": ["dataset", "cli", "runner"], "note": "Generate and validate the deterministic synthetic dataset offline." },
-      { "id": "local-tool", "label": "Local taxonomy tool", "focus": ["runner", "prompts", "ollama"], "note": "The tool-instructions variant can call only the local skill taxonomy." }
+      { "id": "local-tool", "label": "Local taxonomy tool", "focus": ["runner", "prompts", "ollama"], "note": "The tool-instructions variant can call only the local skill taxonomy." },
+      { "id": "offline-replay", "label": "Offline replay and report", "focus": ["operator", "cli", "dataset", "results", "replay", "report"], "note": "Re-score stored responses without Ollama and write a standalone HTML report." },
+      { "id": "run-history", "label": "Run history and comparison", "focus": ["operator", "cli", "results", "comparison"], "note": "Resume incomplete runs, query manifests, and compare completed paired runs." }
     ]
   },
   "components": [
@@ -19,20 +21,30 @@
     { "id": "prompts", "type": "backend", "label": "Prompt + Taxonomy", "sublabel": "five variants; local allowlist", "pos": [420, 430], "size": [180, 68] },
     { "id": "ollama", "type": "cloud", "label": "Ollama", "sublabel": "localhost; local models", "pos": [665, 270], "size": [160, 68] },
     { "id": "metrics", "type": "backend", "label": "Metrics", "sublabel": "field, task, safety, latency", "pos": [890, 270], "size": [160, 68] },
-    { "id": "results", "type": "database", "label": "Local Results", "sublabel": "results/; ignored by Git", "pos": [1115, 270], "size": [160, 68] }
+    { "id": "results", "type": "database", "label": "Run Artifacts + Index", "sublabel": "manifests, JSONL, SQLite, HTML", "pos": [1115, 270], "size": [180, 68] },
+    { "id": "replay", "type": "backend", "label": "Offline Replay", "sublabel": "stored responses + dataset labels", "pos": [890, 100], "size": [190, 72] },
+    { "id": "report", "type": "frontend", "label": "HTML Report", "sublabel": "standalone; no remote assets", "pos": [1115, 100], "size": [180, 72] },
+    { "id": "comparison", "type": "backend", "label": "Paired Comparison", "sublabel": "delta + seeded bootstrap CI", "pos": [890, 440], "size": [180, 72] }
   ],
   "connections": [
-    { "from": "operator", "to": "cli", "label": "generate / validate / run", "variant": "emphasis", "labelDy": -28 },
+    { "from": "operator", "to": "cli", "label": "generate / validate / run / replay", "variant": "emphasis", "labelDx": -12, "labelDy": -28 },
     { "from": "dataset", "to": "cli", "label": "JSONL", "fromSide": "bottom", "toSide": "top", "labelDy": -62 },
     { "from": "cli", "to": "runner", "label": "selected split and models", "variant": "emphasis", "labelDy": -28 },
     { "from": "runner", "to": "prompts", "label": "render variant", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
     { "from": "prompts", "to": "ollama", "label": "local /api/chat", "fromSide": "right", "toSide": "bottom" },
     { "from": "ollama", "to": "metrics", "label": "response + model metadata", "variant": "emphasis", "labelDy": -28 },
-    { "from": "metrics", "to": "results", "label": "JSONL + summary JSON", "variant": "emphasis", "labelDy": -28 }
+    { "from": "metrics", "to": "results", "label": "responses JSONL + summary", "variant": "emphasis", "labelDx": -80, "labelDy": -28 },
+    { "from": "cli", "to": "replay", "label": "replay --input", "fromSide": "top", "toSide": "bottom" },
+    { "from": "dataset", "to": "replay", "label": "expected labels", "fromSide": "right", "toSide": "top" },
+    { "from": "results", "to": "replay", "label": "stored JSONL", "fromSide": "bottom", "toSide": "right" },
+    { "from": "replay", "to": "report", "label": "recalculated metrics", "variant": "emphasis", "labelDy": -23 },
+    { "from": "report", "to": "results", "label": "report.html", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "from": "metrics", "to": "comparison", "fromSide": "bottom", "toSide": "top" }
   ],
   "cards": [
     { "dot": "cyan", "title": "Local by default", "items": ["Inference runs through Ollama on localhost", "The application does not send benchmark data to hosted model APIs"] },
-    { "dot": "emerald", "title": "Reproducible evaluation", "items": ["Fixed synthetic dataset and seed", "Same cases are paired across prompt variants"] },
-    { "dot": "rose", "title": "Bounded tool use", "items": ["Only the local skill taxonomy tool is allowlisted", "Raw outputs and summaries stay under ignored results/"] }
+    { "dot": "amber", "title": "Holdout findings", "items": ["Qwen: 76% complete, F1 0.753; Llama: 100%, F1 0.913", "Canary leaks: Qwen 0/50, Llama 4/50; exact title: 0% for both"] },
+    { "dot": "rose", "title": "Bounded tool use", "items": ["Only the local skill taxonomy tool is allowlisted", "Raw outputs and summaries stay under ignored results/"] },
+    { "dot": "violet", "title": "Offline replay", "items": ["Recalculates scores from stored responses without Ollama", "Creates a self-contained local HTML report"] }
   ]
 }

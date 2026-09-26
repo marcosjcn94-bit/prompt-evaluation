@@ -21,6 +21,8 @@ Atualizado em 2026-09-26. Marque como concluído apenas o que tiver evidência r
 - [x] Registrar resultados negativos: título com 0% exact match nos modelos avaliados; Llama vazou o canário em 4/50 casos do holdout.
 - [ ] Corrigir, em uma nova versão do benchmark, o desalinhamento entre o título esperado e o sufixo de senioridade observado. Não alterar rótulos ou prompts desta versão após abrir o holdout.
 - [ ] Planejar validação com vagas reais autorizadas, anotação independente e métricas de concordância antes de alegar desempenho real.
+- [x] Recalcular scores de respostas salvas com replay sem acessar/importar Ollama; gravar resumo atualizado sem alterar o JSONL de origem.
+- [x] Gerar relatório HTML local e autocontido com agregados por variante/família, comparação pareada descritiva e resultados por caso.
 
 ## Alternativa gratuita e FinOps
 
@@ -40,7 +42,7 @@ Atualizado em 2026-09-26. Marque como concluído apenas o que tiver evidência r
 - [x] Criar commit com as mudanças aprovadas.
 - [x] Enviar o commit a `origin/main`; o push foi concluído usando a autenticação Git disponível no Git, apesar do token inválido reportado pelo `gh auth status`.
 
-## Verificações desta execução final (2026-09-26)
+## Verificações da execução anterior (antes do replay, 2026-09-26)
 
 - [x] Suíte: `py -3.13 -m unittest discover -s tests -p "test_*.py" -v` — 14 testes passaram.
 - [x] Dataset: `py -3.13 scripts/prompt_eval.py validate` — 150 registros, 100 `dev`, 50 `test`.
@@ -48,19 +50,31 @@ Atualizado em 2026-09-26. Marque como concluído apenas o que tiver evidência r
 - [x] Archify visual-check: HTML aprovado em 1440×900, 1600×1000, 1920×1080 e 2048×1320; sem overflow. Captura revisada; sidecars temporários removidos.
 - [x] Privacidade e publicação: `AGENTS.md`, dados de origem privados e resultados locais ficaram fora do stage.
 
-## Requisitos adicionais do AGENTS.md adiados
+## Requisitos do AGENTS.md fora da primeira fatia
 
-Os itens abaixo não fazem parte do MVP concluído nesta execução; permanecem como trabalho futuro:
+No corte inicial de replay, IDs/manifest, retomada, registro, comparação estatística e CI foram adiados. A implementação posterior está registrada em **Runtime auditável e CI**, abaixo. `AGENTS.md` é uma instrução local e permanece fora do stage/publicação.
 
-- [ ] IDs de execução e manifest por run, com hashes e metadados, organizados em `results/<run_id>/`.
-- [ ] Retry limitado e retomada segura após interrupção; `--resume` deve pular casos já concluídos e resultados parciais não podem ser tratados como completos.
-- [ ] Comando de replay que recalcula métricas dos JSONL sem acessar o Ollama.
-- [ ] Registro pesquisável de runs com `sqlite3`, mantendo JSON/JSONL como artefatos auditáveis.
-- [ ] Comparação pareada entre runs com delta, vitórias/derrotas/empates e intervalo de confiança bootstrap com seed fixa.
-- [ ] Relatório HTML por run e workflow de CI para testes unitários, regressão de replay e verificações de sintaxe/import.
-- [ ] Atualizar documentação e diagramas quando esses recursos forem implementados.
+## Verificações da fatia de replay e relatório (2026-09-26)
 
-`AGENTS.md` foi consultado nesta cópia local e permanece não versionado; não foi incluído no commit desta entrega. Timeout e falha de conexão têm tratamento básico no cliente Ollama, mas retry e retomada ainda não estão implementados.
+- [x] Suíte completa: `py -3.13 -m unittest discover -s tests -p "test_*.py" -v` — 21 testes passaram.
+- [x] `py -3.13 scripts/prompt_eval.py validate` — 150 registros, 100 `dev` e 50 `test`.
+- [x] Teste de replay via CLI com fixture sintética — resumo e HTML gerados sem importar Ollama; JSONL de origem inalterado.
+- [x] Archify validate/deliver — 9 verificações, 0 erros e 0 avisos; SHA-256 do HTML entregue registrado na saída da execução local.
+- [x] Archify visual-check — a inspeção automatizada inicial desta fatia expirou; na atualização runtime, o navegador passou em quatro viewports e a captura 1440×900 foi revisada.
 ## Critério de encerramento desta entrega
 
-A entrega local está pronta quando os itens de documentação, avaliação e diagramas estiverem concluídos, as verificações forem repetidas com sucesso, o diff não contiver arquivos privados ou saídas brutas, e o commit estiver criado. A publicação no GitHub só fica concluída após confirmação do push remoto. A avaliação via Hugging Face é opcional e não bloqueia o caminho Ollama local.
+A fatia local de replay e relatório foi aceita após suas verificações específicas. A aceitação da camada de runtime aparece separadamente abaixo. Commit e publicação remota são etapas separadas; a avaliação via Hugging Face é opcional e não bloqueia o caminho Ollama local.
+
+## Runtime auditável e CI — 2026-09-26
+
+- [x] Criar runs em `results/<run_id>/` com manifest atômico, configuração, timestamps, versão do Python e hashes do dataset e prompts.
+- [x] Persistir respostas por caso; retry limitado para falhas transitórias; retomar sem repetir respostas terminais e preservar histórico das tentativas.
+- [x] Manter estados `running`, `incomplete`, `interrupted` e `completed`; apenas runs completos recebem resumo e relatório.
+- [x] Indexar e filtrar manifests com SQLite local reconstruível.
+- [x] Comparar dois runs compatíveis por casos pareados, delta e intervalo bootstrap determinístico, sem p-valores.
+- [x] Adicionar CI Python 3.13 para unittest, validação do dataset e import/compile sem inferência.
+- [x] Archify visual-check do diagrama runtime atualizado passou em quatro viewports sem overflow; captura desktop revisada.
+- [x] Suíte local completa: 28 testes passaram; validação do dataset retornou 150 registros (100 dev, 50 test); compileall e `git diff --check` concluídos.
+- [x] Smoke CLI de run e retomada com Ollama simulado; os artefatos de run foram criados e a resposta terminal não foi repetida.
+- [x] Archify validate/deliver: 9/9 verificações, sem erros ou avisos; visual-check automatizado passou em quatro viewports.
+- [ ] Inferência Ollama e benchmark dev/holdout completos não foram executados nesta atualização.

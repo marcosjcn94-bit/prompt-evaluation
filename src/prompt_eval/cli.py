@@ -3,12 +3,18 @@
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .dataset import read_dataset, write_dataset
-from .evaluate import MODELS, run_evaluation, write_results
-from .ollama import OllamaUnavailable
+from .errors import OllamaUnavailable
+from .evaluate import MODELS, run_evaluation, summarize, write_results
 from .prompts import PROMPTS
+from .replay import read_response_jsonl, replay_records, write_summary
+from .report import render_report, write_report
+from .artifacts import atomic_write_text
+from .runs import create_run, load_manifest, prompt_hashes, sha256_file, write_manifest
+from .registry import list_runs
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA = ROOT / "data" / "jobs.jsonl"
@@ -69,11 +75,31 @@ def parser():
     validate.add_argument("--data", type=Path, default=DEFAULT_DATA)
     run = commands.add_parser("run", help="Executa comparação pareada via Ollama local.")
     run.add_argument("--data", type=Path, default=DEFAULT_DATA)
-    run.add_argument("--split", choices=("dev", "test", "all"), default="dev")
+    run.add_argument("--split", choices=("dev", "test", "all"))
     run.add_argument("--model", action="append", dest="models")
     run.add_argument("--variant", action="append", dest="variants")
     run.add_argument("--limit", type=int)
-    run.add_argument("--output", type=Path, default=ROOT / "results" / "run.jsonl")
+    run.add_argument("--output", type=Path, help="Espelha respostas em JSONL legado.")
+    run.add_argument("--results-dir", type=Path, default=ROOT / "results")
+    run.add_argument("--resume", metavar="RUN_ID")
+    replay = commands.add_parser("replay", help="Recalcula métricas de respostas sem usar Ollama.")
+    replay.add_argument("--input", type=Path, required=True)
+    replay.add_argument("--data", type=Path, default=DEFAULT_DATA)
+    runs = commands.add_parser("runs", help="Consulta o histórico local de execuções.")
+    run_commands = runs.add_subparsers(dest="runs_command", required=True)
+    list_command = run_commands.add_parser("list", help="Lista execuções indexadas.")
+    list_command.add_argument("--results-dir", type=Path, default=ROOT / "results")
+    list_command.add_argument("--status")
+    list_command.add_argument("--model")
+    list_command.add_argument("--variant")
+    list_command.add_argument("--split")
+    compare = commands.add_parser("compare", help="Compara duas execuções pareadas concluídas.")
+    compare.add_argument("--run-a", required=True)
+    compare.add_argument("--run-b", required=True)
+    compare.add_argument("--model", required=True)
+    compare.add_argument("--variant-a", required=True)
+    compare.add_argument("--variant-b", required=True)
+    compare.add_argument("--results-dir", type=Path, default=ROOT / "results")
     return root
 
 
@@ -84,20 +110,121 @@ def main(argv=None):
             count = write_dataset(args.output, args.seed)
             print(f"Geradas {count} vagas sintéticas em {args.output}")
             return 0
+        if args.command == "runs":
+            print(json.dumps(list_runs(args.results_dir, args.status, args.model,
+                                       args.variant, args.split), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "compare":
+            from .comparison import compare_runs
+            result = compare_runs(args.results_dir, args.run_a, args.run_b, args.model,
+                                  args.variant_a, args.variant_b)
+            output = args.results_dir / f"comparison-{args.run_a}-{args.run_b}.json"
+            atomic_write_text(output, json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         rows = read_dataset(args.data)
         if args.command == "validate":
             print(json.dumps(validate_dataset(rows), ensure_ascii=False, indent=2))
             return 0
+        if args.command == "replay":
+            manifest_path = args.input.parent / "manifest.json"
+            if manifest_path.exists() and load_manifest(args.input.parent).get("status") != "completed":
+                raise ValueError("Replay e relatório final exigem um run concluído.")
+            records = read_response_jsonl(args.input)
+            replayed = replay_records(records, rows)
+            summary = write_summary(replayed, args.input)
+            report = args.input.with_suffix(".report.html")
+            timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            summary_data = json.loads(summary.read_text(encoding="utf-8"))
+            document = render_report(replayed, summary_data, args.input.name, timestamp)
+            write_report(report, document)
+            print(f"Respostas: {args.input}\nResumo: {summary}\nRelatório: {report}")
+            return 0
         validate_dataset(rows)
-        if args.split != "all":
-            rows = [row for row in rows if row["split"] == args.split]
-        if args.limit:
-            rows = rows[:args.limit]
-        records = run_evaluation(rows, args.models or MODELS, args.variants or list(PROMPTS))
-        summary = write_results(records, args.output)
-        print(f"Resultados: {args.output}\nResumo: {summary}")
+        if args.resume:
+            run_dir = args.results_dir / args.resume
+            manifest = load_manifest(run_dir)
+            run_split = manifest.get("split")
+            rows = rows if run_split == "all" else [row for row in rows if row["split"] == run_split]
+            if manifest.get("limit"):
+                rows = rows[:manifest["limit"]]
+            models = args.models or manifest.get("models", [])
+            variants = args.variants or manifest.get("variants", [])
+            if (manifest.get("dataset_sha256") != sha256_file(args.data)
+                    or manifest.get("models") != list(models)
+                    or manifest.get("variants") != list(variants)
+                    or manifest.get("prompt_sha256") != prompt_hashes(variants)
+                    or (args.split and manifest.get("split") != args.split)
+                    or (args.limit is not None and manifest.get("limit") != args.limit)
+                    or manifest.get("case_count") != len(rows)):
+                raise ValueError("Dataset/configuração diferente do run original; retomada recusada.")
+            existing = read_response_jsonl(run_dir / "responses.jsonl") if (run_dir / "responses.jsonl").exists() else []
+        else:
+            split = args.split or "dev"
+            if split != "all":
+                rows = [row for row in rows if row["split"] == split]
+            if args.limit:
+                rows = rows[:args.limit]
+            models = args.models or MODELS
+            variants = args.variants or list(PROMPTS)
+            if args.limit is not None and args.limit < 1:
+                raise ValueError("--limit deve ser maior que zero.")
+            if len(models) != len(set(models)) or len(variants) != len(set(variants)):
+                raise ValueError("Não repita valores em --model ou --variant.")
+            run_dir, manifest = create_run(args.results_dir, args.data, models, variants,
+                                           split, len(rows), args.limit)
+            existing = []
+
+        print(f"Run: {run_dir}", flush=True)
+
+        def persist(current):
+            content = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in current)
+            atomic_write_text(run_dir / "responses.jsonl", content)
+
+        def persist_models(model_manifest):
+            manifest["model_manifest"] = model_manifest
+            write_manifest(run_dir, manifest)
+
+        try:
+            records = run_evaluation(rows, models, variants, existing=existing, persist=persist,
+                                     model_manifest_callback=persist_models,
+                                     expected_model_manifest=manifest.get("model_manifest", {}))
+            persist(records)
+            expected = len(rows) * len(models) * len(variants)
+            unique_keys = {(item["id"], item["model"], item["variant"]) for item in records}
+            if len(unique_keys) != expected:
+                manifest["status"] = "incomplete"
+                raise ValueError(f"Run parcial: {len(unique_keys)} de {expected} respostas terminais.")
+            if any(item.get("retryable_error") for item in records):
+                manifest["status"] = "incomplete"
+            else:
+                manifest["status"] = "completed"
+                manifest["completed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                manifest["model_manifest"] = {item["model"]: item["model_manifest"]
+                                               for item in records if item.get("model_manifest")}
+                replayed = replay_records(records, rows)
+                summary_path = run_dir / "summary.json"
+                atomic_write_text(summary_path, json.dumps(summarize(replayed), ensure_ascii=False, indent=2) + "\n")
+                timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                write_report(run_dir / "report.html", render_report(replayed, json.loads(summary_path.read_text(encoding="utf-8")), manifest["run_id"], timestamp))
+            write_manifest(run_dir, manifest)
+        except KeyboardInterrupt:
+            manifest["status"] = "interrupted"
+            write_manifest(run_dir, manifest)
+            raise
+        except Exception:
+            manifest["status"] = "incomplete"
+            write_manifest(run_dir, manifest)
+            raise
+        if args.output:
+            if manifest["status"] == "completed":
+                write_results(records, args.output)
+            else:
+                atomic_write_text(args.output, "".join(json.dumps(item, ensure_ascii=False) + "\n"
+                                                               for item in records))
+        print(f"Status: {manifest['status']}")
         return 0
-    except (OllamaUnavailable, FileNotFoundError, ValueError) as error:
+    except (OllamaUnavailable, OSError, ValueError) as error:
         print(f"Erro: {error}", file=sys.stderr)
         return 2
 

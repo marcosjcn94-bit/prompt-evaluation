@@ -119,7 +119,138 @@ class MetricTests(unittest.TestCase):
         self.assertEqual(result["paired_comparisons"][0]["a_win_rate_excluding_ties"], 1.0)
 
 
+class ReplayTests(unittest.TestCase):
+    @staticmethod
+    def _case(case_id="case-1"):
+        expected = {"title": "Analista de Dados", "seniority": "pleno",
+                    "skills": ["Python", "SQL"], "location": "Recife, PE",
+                    "employment_type": "CLT"}
+        dataset = [{"id": case_id, "expected": expected}]
+        responses = [
+            {"id": case_id, "model": "local", "variant": "a", "family": "common",
+             "raw_output": json.dumps(expected, ensure_ascii=False), "tool_calls": [],
+             "latency_seconds": 0.2, "scores": {"stale": 1}},
+            {"id": case_id, "model": "local", "variant": "b", "family": "common",
+             "raw_output": "not JSON", "tool_calls": [], "latency_seconds": 0.4,
+             "scores": {"stale": 1}},
+        ]
+        return expected, dataset, responses
+
+    def test_replay_recalculates_scores_and_pairs_repeated_case_ids(self):
+        from prompt_eval.evaluate import summarize
+        from prompt_eval.replay import replay_records
+
+        _, dataset, responses = self._case()
+        original = copy.deepcopy(responses)
+        replayed = replay_records(responses, dataset)
+
+        self.assertEqual(responses, original)
+        self.assertEqual(replayed[0]["scores"]["title_accuracy"], 1.0)
+        self.assertEqual(replayed[1]["scores"]["json_valid"], 0)
+        comparison = summarize(replayed)["paired_comparisons"][0]
+        self.assertEqual((comparison["a_wins"], comparison["b_wins"], comparison["ties"]),
+                         (1, 0, 0))
+
+    def test_replay_rejects_response_without_dataset_label(self):
+        from prompt_eval.replay import replay_records
+
+        _, dataset, responses = self._case()
+        with self.assertRaisesRegex(ValueError, "case-1"):
+            replay_records(responses, [{**dataset[0], "id": "another-case"}])
+
+    def test_response_jsonl_reports_invalid_line_number(self):
+        from prompt_eval.replay import read_response_jsonl
+
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "responses.jsonl"
+            source.write_text('{"id":"ok"}\nnot JSON\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "linha 2"):
+                read_response_jsonl(source)
+
+    def test_cli_replay_writes_summary_without_importing_ollama_or_changing_input(self):
+        expected, dataset, responses = self._case()
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "responses.jsonl"
+            data = Path(temp) / "jobs.jsonl"
+            source_text = json.dumps(responses[0], ensure_ascii=False) + "\n"
+            source.write_text(source_text, encoding="utf-8")
+            data.write_text(json.dumps(dataset[0], ensure_ascii=False) + "\n", encoding="utf-8")
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(ROOT / "src")
+            code = (
+                "import sys; from prompt_eval.cli import main; "
+                "status = main(['replay', '--input', sys.argv[1], '--data', sys.argv[2]]); "
+                "assert 'prompt_eval.ollama' not in sys.modules; raise SystemExit(status)"
+            )
+            result = subprocess.run([sys.executable, "-c", code, str(source), str(data)],
+                                    cwd=ROOT, env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(source.read_text(encoding="utf-8"), source_text)
+            summary = json.loads((Path(temp) / "responses.summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["n"], 1)
+            self.assertEqual(summary["groups"][0]["metrics"]["title_accuracy"], 1.0)
+            self.assertTrue((Path(temp) / "responses.report.html").is_file())
+
+    def test_failed_atomic_replace_preserves_old_artifact_and_cleans_temp(self):
+        from prompt_eval.artifacts import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "summary.json"
+            destination.write_text("old", encoding="utf-8")
+            with patch.object(Path, "replace", side_effect=OSError("blocked")):
+                with self.assertRaisesRegex(OSError, "blocked"):
+                    atomic_write_text(destination, "new")
+            self.assertEqual(destination.read_text(encoding="utf-8"), "old")
+            self.assertEqual(list(Path(temp).iterdir()), [destination])
+
+
+class ReportTests(unittest.TestCase):
+    def test_report_is_responsive_escaped_and_excludes_raw_inputs(self):
+        from prompt_eval.evaluate import summarize
+        from prompt_eval.replay import replay_records
+        from prompt_eval.report import render_report
+
+        expected, dataset, responses = ReplayTests._case("<img src=x onerror=alert(1)>")
+        responses[0]["family"] = "direct_override"
+        responses[0]["raw_output"] = json.dumps(expected) + " RAW-SECRET-9271"
+        responses[0]["job_text"] = "VACANCY-SECRET-3842"
+        responses[0]["generation_error"] = "<script>alert('error')</script>"
+        responses[0]["id"] = dataset[0]["id"]
+        replayed = replay_records(responses, dataset)
+        document = render_report(replayed, summarize(replayed), "<b>sample</b>.jsonl",
+                                 "2026-09-26T16:00:00+00:00")
+
+        self.assertIn("Resumo da execução", document)
+        self.assertIn("Comparações pareadas", document)
+        self.assertIn("resultados por família", document.lower())
+        self.assertIn("direct_override", document)
+        self.assertIn("Vitórias", document)
+        self.assertIn("&lt;img", document)
+        self.assertIn("&lt;script&gt;", document)
+        self.assertIn("&lt;b&gt;sample&lt;/b&gt;", document)
+        self.assertNotIn("<img", document)
+        self.assertNotIn("<script", document)
+        self.assertNotIn("RAW-SECRET-9271", document)
+        self.assertNotIn("VACANCY-SECRET-3842", document)
+        self.assertNotIn("https://", document.lower())
+        self.assertNotIn("http://", document.lower())
+        self.assertIn("@media", document)
+        self.assertIn("overflow-x:auto", document)
+        self.assertIn("significância estatística", document)
+
+
 class CliTests(unittest.TestCase):
+    def test_cli_import_does_not_load_ollama_client(self):
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT / "src")
+        code = (
+            "import sys; import prompt_eval.cli; "
+            "assert 'prompt_eval.ollama' not in sys.modules"
+        )
+        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env,
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_missing_ollama_gives_actionable_message_and_no_traceback(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "results.jsonl"

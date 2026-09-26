@@ -6,8 +6,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+from .errors import OllamaUnavailable, RetryableOllamaError
 from .metrics import parse_output, score_prediction
-from .ollama import check_model, generate
 from .prompts import PROMPTS
 
 MODELS = ("qwen3:4b", "llama3.2:3b")
@@ -20,22 +20,60 @@ def _report_progress(message):
     print(message, flush=True)
 
 
-def run_evaluation(rows, models=MODELS, variants=None, progress=_report_progress):
+def run_evaluation(rows, models=MODELS, variants=None, progress=_report_progress,
+                   existing=None, persist=None, sleep=time.sleep,
+                   model_manifest_callback=None, expected_model_manifest=None):
+    from .ollama import check_model, generate
+
     variants = variants or list(PROMPTS)
     model_manifest = {}
     for model in models:
         model_manifest[model] = check_model(model)
-    records = []
+    for model, expected in (expected_model_manifest or {}).items():
+        if model in model_manifest and expected != model_manifest[model]:
+            raise ValueError(f"Digest do modelo mudou desde a execução original: {model}.")
+    if model_manifest_callback:
+        model_manifest_callback(model_manifest)
+    for record in existing or []:
+        prior = record.get("model_manifest")
+        if prior and prior != model_manifest.get(record.get("model")):
+            raise ValueError(f"Digest do modelo mudou desde a execução original: {record.get('model')}.")
+    records = list(existing or [])
+    completed = {(row["id"], row["model"], row["variant"]): row for row in records
+                 if not row.get("retryable_error")}
+    retryable_existing = {(row["id"], row["model"], row["variant"]): row for row in records
+                          if row.get("retryable_error")}
+    records = list(completed.values())
     total = len(rows) * len(models) * len(variants)
     for model in models:
         for variant in variants:
             for row in rows:
+                key = (row["id"], model, variant)
+                if key in completed:
+                    continue
                 started = time.perf_counter()
-                raw, calls, response = generate(model, variant, row["job_text"])
+                error = None
+                raw, calls, response = "", [], {}
+                attempt_history = []
+                for attempt in range(3):
+                    try:
+                        raw, calls, response = generate(model, variant, row["job_text"])
+                        attempt_history.append({"attempt": attempt + 1, "status": "response"})
+                        error = None
+                        break
+                    except RetryableOllamaError as exc:
+                        error = exc
+                        attempt_history.append({"attempt": attempt + 1, "status": "retryable_error", "error": str(exc)})
+                        if attempt < 2:
+                            sleep(2 ** attempt)
+                    except OllamaUnavailable as exc:
+                        error = exc
+                        attempt_history.append({"attempt": attempt + 1, "status": "error", "error": str(exc)})
+                        break
                 elapsed = time.perf_counter() - started
                 prediction = parse_output(raw)
                 scores = score_prediction(row["expected"], prediction, raw, calls)
-                records.append({"id": row["id"], "split": row["split"],
+                record = {"id": row["id"], "split": row["split"],
                                 "family": row["family"], "model": model,
                                 "model_manifest": model_manifest[model],
                                 "variant": variant,
@@ -47,8 +85,16 @@ def run_evaluation(rows, models=MODELS, variants=None, progress=_report_progress
                                 "prompt_tokens": response.get("prompt_eval_count"),
                                 "completion_tokens": response.get("eval_count"),
                                 "tool_calls": calls,
-                                "generation_error": response.get("error"),
-                                "prediction": prediction, "raw_output": raw})
+                                "generation_error": str(error) if error else response.get("error"),
+                                "retryable_error": isinstance(error, RetryableOllamaError),
+                                "attempts": len((retryable_existing[key].get("attempt_history", [])
+                                                  if key in retryable_existing else []) + attempt_history),
+                                "attempt_history": (retryable_existing[key].get("attempt_history", [])
+                                                    if key in retryable_existing else []) + attempt_history,
+                                "prediction": prediction, "raw_output": raw}
+                records.append(record)
+                if persist:
+                    persist(records)
                 if progress:
                     progress(f"[{len(records)}/{total}] {model} / {variant} / {row['id']}")
     return records
