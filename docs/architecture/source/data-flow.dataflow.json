@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Prompt Evaluation Lab — Data Flow",
+    "output": "data-flow.html",
+    "viewBox": [1000, 520],
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    { "label": "Create and select" },
+    { "label": "Prepare prompt" },
+    { "label": "Local inference" },
+    { "label": "Score and save" }
+  ],
+  "nodes": [
+    { "id": "dataset", "type": "database", "label": "Synthetic Dataset", "sublabel": "generator; 150 records", "stage": 0, "row": 0, "tag": "offline" },
+    { "id": "cli", "type": "frontend", "label": "CLI + Split", "sublabel": "dev / reserved test", "stage": 0, "row": 1, "tag": "local" },
+    { "id": "prompt", "type": "backend", "label": "Prompt Renderer", "sublabel": "one of five variants", "stage": 1, "row": 1, "tag": "versioned" },
+    { "id": "ollama", "type": "cloud", "label": "Ollama", "sublabel": "localhost:11434", "stage": 2, "row": 1, "tag": "local models" },
+    { "id": "response", "type": "backend", "label": "Model Response", "sublabel": "raw text + metadata", "stage": 2, "row": 2, "tag": "per case" },
+    { "id": "metrics", "type": "backend", "label": "Metric Scorer", "sublabel": "JSON, fields, safety, time", "stage": 3, "row": 0, "tag": "deterministic" },
+    { "id": "artifacts", "type": "database", "label": "results/", "sublabel": "JSONL + summary JSON", "stage": 3, "row": 1, "tag": "Git-ignored" }
+  ],
+  "flows": [
+    { "from": "dataset", "to": "cli", "label": "load + validate", "classification": "synthetic only", "labelDy": 24 },
+    { "from": "cli", "to": "prompt", "label": "selected records", "classification": "dev or reserved test", "variant": "emphasis", "labelAt": [208, 314] },
+    { "from": "prompt", "to": "ollama", "label": "rendered prompt", "classification": "synthetic only", "variant": "emphasis" },
+    { "from": "ollama", "to": "response", "label": "generated output", "classification": "local response", "labelDy": 24 },
+    { "from": "response", "to": "metrics", "label": "parse and score", "classification": "raw output + scores" },
+    { "from": "metrics", "to": "artifacts", "label": "append records + aggregate", "classification": "local files", "variant": "emphasis", "labelDy": 24 }
+  ]
+}

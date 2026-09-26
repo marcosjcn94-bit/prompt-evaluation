@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Prompt Evaluation Lab — Runtime Architecture",
+    "output": "runtime.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "evaluation", "label": "Evaluation path", "focus": ["operator", "cli", "runner", "ollama", "metrics", "results"], "note": "Run paired prompt experiments against local Ollama models." },
+      { "id": "synthetic-data", "label": "Synthetic data", "focus": ["dataset", "cli", "runner"], "note": "Generate and validate the deterministic synthetic dataset offline." },
+      { "id": "local-tool", "label": "Local taxonomy tool", "focus": ["runner", "prompts", "ollama"], "note": "The tool-instructions variant can call only the local skill taxonomy." }
+    ]
+  },
+  "components": [
+    { "id": "operator", "type": "external", "label": "Developer", "sublabel": "PowerShell CLI", "pos": [40, 270], "size": [145, 68] },
+    { "id": "cli", "type": "frontend", "label": "CLI", "sublabel": "scripts/prompt_eval.py", "pos": [210, 270], "size": [160, 68] },
+    { "id": "dataset", "type": "database", "label": "Synthetic Dataset", "sublabel": "data/jobs.jsonl", "pos": [210, 100], "size": [160, 68] },
+    { "id": "runner", "type": "backend", "label": "Evaluation Runner", "sublabel": "paired cases and prompts", "pos": [420, 270], "size": [180, 68] },
+    { "id": "prompts", "type": "backend", "label": "Prompt + Taxonomy", "sublabel": "five variants; local allowlist", "pos": [420, 430], "size": [180, 68] },
+    { "id": "ollama", "type": "cloud", "label": "Ollama", "sublabel": "localhost; local models", "pos": [665, 270], "size": [160, 68] },
+    { "id": "metrics", "type": "backend", "label": "Metrics", "sublabel": "field, task, safety, latency", "pos": [890, 270], "size": [160, 68] },
+    { "id": "results", "type": "database", "label": "Local Results", "sublabel": "results/; ignored by Git", "pos": [1115, 270], "size": [160, 68] }
+  ],
+  "connections": [
+    { "from": "operator", "to": "cli", "label": "generate / validate / run", "variant": "emphasis", "labelDy": -28 },
+    { "from": "dataset", "to": "cli", "label": "JSONL", "fromSide": "bottom", "toSide": "top", "labelDy": -62 },
+    { "from": "cli", "to": "runner", "label": "selected split and models", "variant": "emphasis", "labelDy": -28 },
+    { "from": "runner", "to": "prompts", "label": "render variant", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "from": "prompts", "to": "ollama", "label": "local /api/chat", "fromSide": "right", "toSide": "bottom" },
+    { "from": "ollama", "to": "metrics", "label": "response + model metadata", "variant": "emphasis", "labelDy": -28 },
+    { "from": "metrics", "to": "results", "label": "JSONL + summary JSON", "variant": "emphasis", "labelDy": -28 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Local by default", "items": ["Inference runs through Ollama on localhost", "The application does not send benchmark data to hosted model APIs"] },
+    { "dot": "emerald", "title": "Reproducible evaluation", "items": ["Fixed synthetic dataset and seed", "Same cases are paired across prompt variants"] },
+    { "dot": "rose", "title": "Bounded tool use", "items": ["Only the local skill taxonomy tool is allowlisted", "Raw outputs and summaries stay under ignored results/"] }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Prompt Evaluation Lab — Run Sequence",
+    "output": "run-sequence.html",
+    "viewBox": [1080, 620],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "normal-run", "label": "Standard prompt run", "focus": ["developer", "cli", "runner", "ollama", "scorer", "results"], "note": "A local model response is parsed, scored, and saved per case." },
+      { "id": "tool-run", "label": "Local tool variant", "focus": ["runner", "ollama", "taxonomy"], "note": "Only tool_instructions enables the allowlisted local taxonomy lookup." }
+    ]
+  },
+  "participants": [
+    { "id": "developer", "type": "external", "label": "Developer", "sublabel": "PowerShell" },
+    { "id": "cli", "type": "frontend", "label": "CLI", "sublabel": "command + split" },
+    { "id": "runner", "type": "backend", "label": "Runner", "sublabel": "paired execution" },
+    { "id": "ollama", "type": "cloud", "label": "Ollama", "sublabel": "localhost" },
+    { "id": "taxonomy", "type": "backend", "label": "Taxonomy Tool", "sublabel": "local allowlist" },
+    { "id": "scorer", "type": "backend", "label": "Scorer", "sublabel": "parse + metrics" },
+    { "id": "results", "type": "database", "label": "Local Results", "sublabel": "ignored results/" }
+  ],
+  "segments": [
+    { "from": 160, "to": 230, "label": "Prepare" },
+    { "from": 250, "to": 375, "label": "Infer" },
+    { "from": 400, "to": 560, "label": "Score and persist" }
+  ],
+  "messages": [
+    { "from": "developer", "to": "cli", "y": 180, "label": "run --split dev|test", "variant": "emphasis" },
+    { "from": "cli", "to": "runner", "y": 210, "label": "load validated cases + variants" },
+    { "from": "runner", "to": "ollama", "y": 260, "label": "POST /api/chat", "variant": "emphasis" },
+    { "from": "ollama", "to": "taxonomy", "y": 290, "label": "lookup_skill_taxonomy (tool variant only)", "variant": "dashed", "note": "Only the tool_instructions prompt variant offers this local function." },
+    { "from": "taxonomy", "to": "ollama", "y": 330, "label": "canonical skill names", "variant": "return" },
+    { "from": "ollama", "to": "runner", "y": 370, "label": "final response + metadata", "variant": "return" },
+    { "from": "runner", "to": "scorer", "y": 415, "label": "parse output + score fields and safety", "variant": "emphasis" },
+    { "from": "scorer", "to": "results", "y": 455, "label": "append JSONL record", "variant": "emphasis" },
+    { "from": "results", "to": "cli", "y": 495, "label": "write summary JSON", "variant": "return" },
+    { "from": "cli", "to": "developer", "y": 535, "label": "print artifact paths", "variant": "return" }
+  ]
+}
