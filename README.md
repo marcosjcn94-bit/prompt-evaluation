@@ -2,9 +2,7 @@
 
 Laboratório local para comparar estratégias de prompting na extração de informações estruturadas de descrições sintéticas de vagas em português. Avalia qualidade de extração, formato, latência e alguns comportamentos diante de ataques sintéticos de prompt injection, com resultados reproduzíveis e artefatos auditáveis por execução.
 
-O projeto é experimental: não analisa vagas reais nem comprova desempenho ou segurança em produção. Os resultados descrevem apenas este benchmark sintético, os modelos e os parâmetros avaliados.
-
-**Problema.** Respostas completas podem conter dados incorretos ou seguir instruções maliciosas inseridas no texto de entrada. Sem casos controlados e avaliação pareada, fica difícil comparar estratégias de prompting e identificar essas diferenças.
+**Problema.** Modelos de IA que extraem informações geram respostas diferentes a depender do texto de entrada. Avaliar a qualidade de extração, formato, latência e os riscos de diferentes prompts diante de ataques sintéticos de prompt injection, com resultados reproduzíveis e artefatos auditáveis por execução.
 
 **Solução.** Desenvolvi um laboratório em Python para comparar cinco estratégias de prompt em 150 casos sintéticos — 100 de desenvolvimento e 50 reservados — com os modelos locais Qwen3 4B e Llama 3.2 3B via Ollama. Implementei métricas de formato e extração, casos de prompt injection em cinco famílias, persistência de execuções com manifest e hashes, retomada sem repetir respostas concluídas, replay offline, comparação pareada com bootstrap determinístico e relatório HTML autocontido.
 
