@@ -40,6 +40,27 @@ Atualizado em 2026-09-26. Marque como concluído apenas o que tiver evidência r
 - [x] Criar commit com as mudanças aprovadas.
 - [x] Enviar o commit a `origin/main`; o push foi concluído usando a autenticação Git disponível no Git, apesar do token inválido reportado pelo `gh auth status`.
 
+## Verificações desta execução final (2026-09-26)
+
+- [x] Suíte: `py -3.13 -m unittest discover -s tests -p "test_*.py" -v` — 14 testes passaram.
+- [x] Dataset: `py -3.13 scripts/prompt_eval.py validate` — 150 registros, 100 `dev`, 50 `test`.
+- [x] Smoke local: uma inferência `qwen3:4b/json_schema`, saída e resumo em `results/` (ignorados pelo Git).
+- [x] Archify visual-check: HTML aprovado em 1440×900, 1600×1000, 1920×1080 e 2048×1320; sem overflow. Captura revisada; sidecars temporários removidos.
+- [x] Privacidade e publicação: `AGENTS.md`, dados de origem privados e resultados locais ficaram fora do stage.
+
+## Requisitos adicionais do AGENTS.md adiados
+
+Os itens abaixo não fazem parte do MVP concluído nesta execução; permanecem como trabalho futuro:
+
+- [ ] IDs de execução e manifest por run, com hashes e metadados, organizados em `results/<run_id>/`.
+- [ ] Retry limitado e retomada segura após interrupção; `--resume` deve pular casos já concluídos e resultados parciais não podem ser tratados como completos.
+- [ ] Comando de replay que recalcula métricas dos JSONL sem acessar o Ollama.
+- [ ] Registro pesquisável de runs com `sqlite3`, mantendo JSON/JSONL como artefatos auditáveis.
+- [ ] Comparação pareada entre runs com delta, vitórias/derrotas/empates e intervalo de confiança bootstrap com seed fixa.
+- [ ] Relatório HTML por run e workflow de CI para testes unitários, regressão de replay e verificações de sintaxe/import.
+- [ ] Atualizar documentação e diagramas quando esses recursos forem implementados.
+
+`AGENTS.md` foi consultado nesta cópia local e permanece não versionado; não foi incluído no commit desta entrega. Timeout e falha de conexão têm tratamento básico no cliente Ollama, mas retry e retomada ainda não estão implementados.
 ## Critério de encerramento desta entrega
 
 A entrega local está pronta quando os itens de documentação, avaliação e diagramas estiverem concluídos, as verificações forem repetidas com sucesso, o diff não contiver arquivos privados ou saídas brutas, e o commit estiver criado. A publicação no GitHub só fica concluída após confirmação do push remoto. A avaliação via Hugging Face é opcional e não bloqueia o caminho Ollama local.
